@@ -99,7 +99,7 @@
   <ItemGroup>
     <Content Include="ASCOM.ico" />
     <Content Include="ASCOM.png" />
-    <Content Include="ReadMe.htm" />
+    <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
