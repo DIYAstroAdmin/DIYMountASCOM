@@ -80,6 +80,7 @@ namespace ASCOM.DIYAstroMount.Telescope
         private static double? targetDec;
         private static double? lastSetLatitude;
         private static double? lastSetLongitude;
+        private static double? lastSetElevation;
         private static short slewSettleTime = 0;
         private static string firmwareName = "";
         private static string firmwareVersion = "";
@@ -340,7 +341,7 @@ namespace ASCOM.DIYAstroMount.Telescope
                     axisMoving[0] = axisMoving[1] = false;
                     pulseEnd[0] = pulseEnd[1] = DateTime.MinValue;
                     targetRa = targetDec = null;
-                    lastSetLatitude = lastSetLongitude = null;
+                    lastSetLatitude = lastSetLongitude = lastSetElevation = null;
                 }
 
                 // The firmware has no command to read the tracking rate, so set a known one.
@@ -895,17 +896,35 @@ namespace ASCOM.DIYAstroMount.Telescope
             }
         }
 
+        /// <summary>
+        /// Site elevation (metres above mean sea level), via the OnStep :Gv# / :SvsDDDD.D# extension.
+        /// The mount reports 0.1 m resolution, so the last value written is returned if it agrees
+        /// with the mount to within that resolution.
+        /// </summary>
         internal static double SiteElevation
         {
             get
             {
-                LogMessage("SiteElevation Get", "Not implemented");
-                throw new PropertyNotImplementedException("SiteElevation", false);
+                string reply = mount.SendString("Gv");
+                if (!double.TryParse(reply.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double elevation))
+                    throw new DriverException($"SiteElevation: unexpected reply to :Gv#: \"{reply}\".");
+                lock (stateLock)
+                {
+                    if (lastSetElevation.HasValue && Math.Abs(lastSetElevation.Value - elevation) <= 0.05 + 1e-9)
+                        elevation = lastSetElevation.Value;
+                }
+                LogMessage("SiteElevation Get", elevation.ToString(CultureInfo.InvariantCulture));
+                return elevation;
             }
             set
             {
-                LogMessage("SiteElevation Set", "Not implemented");
-                throw new PropertyNotImplementedException("SiteElevation", true);
+                LogMessage("SiteElevation Set", value.ToString(CultureInfo.InvariantCulture));
+                if (double.IsNaN(value) || value < -300.0 || value > 10000.0)
+                    throw new InvalidValueException("SiteElevation", value.ToString(CultureInfo.InvariantCulture), "-300 to +10000");
+                // Firmware format is sDDDD.D (sign, metres, one decimal).
+                if (mount.SendChar("Sv" + value.ToString("+0000.0;-0000.0", CultureInfo.InvariantCulture)) != '1')
+                    throw new DriverException("SiteElevation: the mount rejected the elevation.");
+                lock (stateLock) { lastSetElevation = value; }
             }
         }
 
